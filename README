@@ -1,0 +1,26 @@
+Simple server for translating Modbus RTU (over serial line) to Modbus TCP and vice versa.
+
+Requirments:
+libmodbus ver. 2.9.3
+
+Compilation:
+gcc -Wall -I/usr/include/modbus -o mrtu2mtcp mrtu2mtcp.c -lmodbus -lrt
+
+Usage:
+$ ./mrtu2mtcp -h
+Usage: ./mrtu2mtcp [options]
+Possible options:
+-s rtu_slave_address (default 1)
+-S usb_device (default /dev/ttyUSB0)
+-b baudrate (default 9600)
+-y parity posible values: N,E,O (default E)
+-n number_of_transport_bits (default 8)
+-B number_of_stop_bits (default 1)
+-A ip_address to bind (default 127.0.0.1)
+-p port to bind (default 1502)
+-v be verbose if present
+-l log_file (NOT IMPLEMENTED)
+-d demonize if present (NOT IMPLEMENTED)
+
+
+Have fun!
