@@ -1,6 +1,6 @@
 Simple server for translating Modbus RTU (over serial line) to Modbus TCP and vice versa.
 
-Requirments:
+Requirements:
 libmodbus ver. 2.9.3
 
 Compilation:
