@@ -15,6 +15,7 @@
 #include <stdarg.h>
 #include <syslog.h>
 
+#define VERSION "1.0"
 #define MODBUS_RTU_SLAVE 0x01
 #define BAUDRATE 9600 
 #define SERIAL_BITS 8
@@ -299,6 +300,7 @@ int parseopts(int argc, char *argv[], config_t *opts)
 		break;
 		case 'h':
     default:
+	    fprintf(stderr, "mrtu2mtcp - Simple modbus TCP server to Modbus RTU, " VERSION "\n");
 	    fprintf(stderr, "Usage: %s [options]\n",argv[0] );
 	    fprintf(stderr, "Possible options:\n" );
 	    fprintf(stderr, "-s rtu_slave_address (default %d, transparency 255)\n",MODBUS_RTU_SLAVE );
