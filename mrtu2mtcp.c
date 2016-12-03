@@ -15,7 +15,7 @@
 #define PARITY 'E'
 #define STOP_BITS 1
 #define IP "127.0.0.1"
-#define PORT 1502
+#define PORT MODBUS_TCP_DEFAULT_PORT  /* 502 */
 #define USB_DEV "/dev/ttyUSB0"
 
 /* Function codes */
