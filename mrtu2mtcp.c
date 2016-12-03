@@ -8,6 +8,9 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <modbus.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #define MODBUS_RTU_SLAVE 0x01
 #define BAUDRATE 9600 
@@ -173,7 +176,18 @@ int main(int argc, char *argv[])
 		switch(fork()){
 		case 0:
 			//printf("Child\n");
-			printf("Connection accepted and used by child PID: %d\n",getpid());
+			{
+				struct sockaddr_in clientName = { 0 };
+				socklen_t clientLength = sizeof(clientName);
+				int socket = modbus_get_socket(mb_tcp);
+
+				if (getpeername(socket, (struct sockaddr *) &clientName, &clientLength) != -1) {
+					printf("Connection accepted from %s and used by child PID: %d\n",
+							inet_ntoa(clientName.sin_addr), getpid());
+				} else {
+					printf("Connection accepted and used by child PID: %d\n",getpid());
+				}
+			}
  			rc = process_tcp_request(mb_tcp, mb_rtu, mb_mapping, rtu_lock, offset);
 			close(mb_tcp_socket);
 			printf("Server child PID %d died\n",getpid());
