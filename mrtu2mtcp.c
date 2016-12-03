@@ -329,6 +329,7 @@ int recive_data_from_rtu(modbus_t *rtu, uint8_t *req,
 								&mb_mapping->tab_registers[address]);
 	}
 		break;
+	/* Same as _FC_WRITE_AND_READ_REGISTERS in 3.0.0 */
 	case _FC_READ_AND_WRITE_REGISTERS: {
 		uint16_t address_write = (req[offset + 5] << 8) + req[offset + 6];
  		int nb_write = (req[offset + 7] << 8) + req[offset + 8];
@@ -338,10 +339,15 @@ int recive_data_from_rtu(modbus_t *rtu, uint8_t *req,
   			mb_mapping->tab_registers[i] = (req[offset + j] << 8) + req[offset + j + 1];
     }
 
-		status = modbus_read_and_write_registers(rtu,address,nb_data,
-											&mb_mapping->tab_registers[address],
-											address_write,nb_write,
-											&mb_mapping->tab_registers[address_write]);
+#if LIBMODBUS_VERSION_CHECK(3,0,0)
+		status = modbus_write_and_read_registers(rtu,
+						address_write,nb_write,&mb_mapping->tab_registers[address_write],
+						address,nb_data,&mb_mapping->tab_registers[address]);
+#else
+		status = modbus_read_and_write_registers(rtu,
+						address,nb_data,&mb_mapping->tab_registers[address],
+						address_write,nb_write,&mb_mapping->tab_registers[address_write]);
+#endif
 	}
 		break;
 
@@ -369,7 +375,11 @@ int process_tcp_request(modbus_t *mb_tcp, modbus_t *mb_rtu,
 	}
 
   for (;;) {
+#if LIBMODBUS_VERSION_CHECK(3,0,0)
+		query_size = modbus_receive(mb_tcp, req);
+#else
 		query_size = modbus_receive(mb_tcp, -1, req);
+#endif
 
 		if (query_size != -1) {
 
