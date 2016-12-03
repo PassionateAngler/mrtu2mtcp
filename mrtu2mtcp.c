@@ -422,9 +422,24 @@ int process_tcp_request(modbus_t *mb_tcp, modbus_t *mb_rtu,
 			if( query_size > 0){
 				modbus_reply(mb_tcp,req,query_size,mb_mapping);			
 			}else{
+				static int last_errno;
+				static int count_errno;
+
  				//fprintf(stderr, "RTU Slave error PID:%d: %s\n", pid,
- 				fprintf(stderr, "RTU Slave error: %s\n",
+				#define MAX_ERRNO_MUTE 10
+				if(last_errno != errno)
+					count_errno = 0;
+				last_errno = errno;
+
+				if(count_errno < MAX_ERRNO_MUTE) {
+					count_errno++;
+					if(count_errno == MAX_ERRNO_MUTE)
+ 						fprintf(stderr, "RTU Slave error: %s (mute now)\n",
    					 modbus_strerror(errno));
+					else
+ 						fprintf(stderr, "RTU Slave error: %s\n",
+   					 modbus_strerror(errno));
+				}
 				modbus_reply_exception(mb_tcp, req, errno);
 			}
 		} else {
