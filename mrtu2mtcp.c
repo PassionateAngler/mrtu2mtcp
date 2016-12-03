@@ -11,6 +11,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <string.h>
+#include <stdarg.h>
+#include <syslog.h>
 
 #define MODBUS_RTU_SLAVE 0x01
 #define BAUDRATE 9600 
@@ -59,6 +62,10 @@ typedef struct{
 	unsigned int daemonize;
 } config_t;
 
+/*place for command line opts*/
+static config_t opts;
+static int syslog_prio;
+
 int recive_data_from_rtu(modbus_t *rtu, uint8_t *req, 
 												int offset, modbus_mapping_t *mb_mapping);
 
@@ -66,6 +73,21 @@ int process_tcp_request(modbus_t *mb_tcp, modbus_t *mb_rtu,
 												modbus_mapping_t *mb_mapping, sem_t *rtu_lock,int offset);
 
 int parseopts(int argc, char *argv[], config_t *opts);
+
+int m_log(int prio, char *fmt, ...)
+{
+	va_list   argv;
+	va_start(argv, fmt);
+	if (prio <= syslog_prio)
+		vsyslog(prio, fmt, argv);
+	else if(prio <= LOG_ERR)
+		vfprintf(stderr, fmt, argv);
+	else
+		vfprintf(stdout, fmt, argv);
+	va_end(argv);
+
+	return 0;
+}
 
 int main(int argc, char *argv[])
 {
@@ -78,9 +100,6 @@ int main(int argc, char *argv[])
 	modbus_mapping_t *mb_mapping;
 	int rc;
 	int offset;
-
-	/*place for command line opts*/
-	config_t opts;
 
 	/*set default values of command lines and prarse them*/
 	opts.slave_addr = MODBUS_RTU_SLAVE;
@@ -99,22 +118,38 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	if(strcmp(opts.log_file, "syslog") == 0) {
+		openlog("mrtu2mtcp", LOG_PID | LOG_PERROR | LOG_NDELAY, LOG_DAEMON);
+		syslog_prio = LOG_NOTICE + opts.debug;
+	}
+
 	/* create, initialize semaphore before everything else */
 	rtu_lock = mmap(NULL, sizeof(sem_t),PROT_READ | PROT_WRITE,
 									MAP_ANONYMOUS | MAP_SHARED, 0, 0);
 
 	if (!rtu_lock) {
-		perror("out of memory\n");
+		m_log(LOG_ERR, "mmap: %m\n");
 		exit(1);
 	}
 	if (sem_init(rtu_lock, 1, 1) < 0) {
-    perror("semaphore initialization");
+    m_log(LOG_ERR, "semaphore initialization: %m\n");
     exit(1);
   }
-	
+
 	mb_tcp = modbus_new_tcp( opts.ip, opts.port);
+	if(!mb_tcp) {
+ 		m_log(LOG_ERR, "Failed to open TCP socket: %s\n", modbus_strerror(errno));
+    modbus_free(mb_tcp);
+		exit(EXIT_FAILURE);
+   }
+
 	mb_rtu = modbus_new_rtu( opts.usb_dev,opts.baudrate,
 													 opts.parity,opts.bits,opts.stop_bits);
+	if(!mb_rtu) {
+ 		m_log(LOG_ERR, "Failed to open RTU device: %s\n", modbus_strerror(errno));
+   	modbus_free(mb_tcp);
+		exit(EXIT_FAILURE);
+	}
 
 	if(opts.debug){
 		modbus_set_debug(mb_tcp,TRUE);
@@ -133,7 +168,7 @@ int main(int argc, char *argv[])
                              MODBUS_MAX_READ_REGISTERS, MODBUS_MAX_WRITE_REGISTERS );
 
   if (mb_mapping == NULL) {
- 		fprintf(stderr, "Failed to allocate the mapping: %s\n",
+ 		m_log(LOG_ERR, "Failed to allocate the mapping: %s\n",
    					 modbus_strerror(errno));
     modbus_free(mb_tcp);
     modbus_free(mb_rtu);
@@ -141,35 +176,35 @@ int main(int argc, char *argv[])
   }
 
 	if( modbus_connect(mb_rtu) == -1){
-		fprintf(stderr,"Connection to device '%s': FAILED\n",opts.usb_dev);
+		m_log(LOG_ERR,"Connection to device '%s': FAILED\n",opts.usb_dev);
 		exit(EXIT_FAILURE);
 	}
 
-	printf("Connection to device '%s': SUCCESS\n",opts.usb_dev);
+	m_log(LOG_INFO, "Connection to device '%s': SUCCESS\n",opts.usb_dev);
 
 	mb_tcp_socket = modbus_tcp_listen(mb_tcp,NB_CON);
 
 	if( mb_tcp_socket == -1){
-		fprintf(stderr,"Binding to address %s on port %d: FAILED\n",opts.ip,opts.port);
+		m_log(LOG_ERR,"Binding to address %s on port %d: FAILED\n",opts.ip,opts.port);
 		exit(EXIT_FAILURE);
 	}
 
-	printf("Binding to address %s on port %d: SUCCESS\n",opts.ip,opts.port);
+	m_log(LOG_INFO, "Binding to address %s on port %d: SUCCESS\n",opts.ip,opts.port);
 	
-	printf("Serial connection params:\n");
+	m_log(LOG_INFO, "Serial connection params:\n");
 	if (opts.slave_addr == MODBUS_TCP_SLAVE)
-		printf("RTU slave address = transparency\n");
+		m_log(LOG_INFO, "RTU slave address = transparency\n");
 	else
-		printf("RTU slave address =  %d\n", opts.slave_addr );
-	printf("Baudrate = %d\n", opts.baudrate );
-	printf("Number of transport bits = %d\n",opts.bits);
-	printf("Parity = %c\n",opts.parity);
+		m_log(LOG_INFO, "RTU slave address = %d\n", opts.slave_addr );
+	m_log(LOG_INFO, "Baudrate = %d\n", opts.baudrate );
+	m_log(LOG_INFO, "Number of transport bits = %d\n",opts.bits);
+	m_log(LOG_INFO, "Parity = %c\n",opts.parity);
 
 	for(;;){
-		printf("Waiting for TCP connection...\n");
+		m_log(LOG_NOTICE, "Waiting for TCP connection...\n");
 		rc = modbus_tcp_accept(mb_tcp,&mb_tcp_socket);		
   	if (rc == -1) {
- 			fprintf(stderr, "Modbus TCP error: %s\n",modbus_strerror(errno));
+ 			m_log(LOG_ERR, "Modbus TCP error: %s\n",modbus_strerror(errno));
 			continue;
   	}
 		//printf("End of Accept\n");
@@ -182,15 +217,15 @@ int main(int argc, char *argv[])
 				int socket = modbus_get_socket(mb_tcp);
 
 				if (getpeername(socket, (struct sockaddr *) &clientName, &clientLength) != -1) {
-					printf("Connection accepted from %s and used by child PID: %d\n",
+					m_log(LOG_NOTICE, "Connection accepted from %s and used by child PID: %d\n",
 							inet_ntoa(clientName.sin_addr), getpid());
 				} else {
-					printf("Connection accepted and used by child PID: %d\n",getpid());
+					m_log(LOG_NOTICE, "Connection accepted and used by child PID: %d\n",getpid());
 				}
 			}
  			rc = process_tcp_request(mb_tcp, mb_rtu, mb_mapping, rtu_lock, offset);
 			close(mb_tcp_socket);
-			printf("Server child PID %d died\n",getpid());
+			m_log(LOG_INFO, "Server child PID %d died\n",getpid());
 			/*DIE! DIE! DIE! my sweet child:)*/
 			return rc;
 			break;
@@ -200,7 +235,7 @@ int main(int argc, char *argv[])
 			break;
 
 		case -1:
-			perror("Error during fork\n");
+			m_log(LOG_ERR, "Error during fork:%m\n");
 			break;
 		}
 	}
@@ -213,6 +248,8 @@ int main(int argc, char *argv[])
 
   modbus_close(mb_tcp);
   modbus_free(mb_tcp);
+
+    closelog();
 
 	return EXIT_SUCCESS;
 }
@@ -388,7 +425,7 @@ int process_tcp_request(modbus_t *mb_tcp, modbus_t *mb_rtu,
 	uint8_t rtu_slave = *(int *)mb_rtu; /* Read back configuration mb_rtu->slave */
 
 	if(req == NULL){
- 		fprintf(stderr, "process_tcp_request : Failed to allocate memory.\n");
+ 		m_log(LOG_ERR, "process_tcp_request : Failed to allocate memory.\n");
 		return -2;
 	}
 
@@ -434,22 +471,20 @@ int process_tcp_request(modbus_t *mb_tcp, modbus_t *mb_rtu,
 				if(count_errno < MAX_ERRNO_MUTE) {
 					count_errno++;
 					if(count_errno == MAX_ERRNO_MUTE)
- 						fprintf(stderr, "RTU Slave error: %s (mute now)\n",
-   					 modbus_strerror(errno));
+ 						m_log(LOG_ERR, "RTU Slave error: %s (mute now)\n", modbus_strerror(errno));
 					else
- 						fprintf(stderr, "RTU Slave error: %s\n",
-   					 modbus_strerror(errno));
+ 						m_log(LOG_ERR, "RTU Slave error: %s\n", modbus_strerror(errno));
 				}
 				modbus_reply_exception(mb_tcp, req, errno);
 			}
 		} else {
 			if (errno == ECONNRESET) {
 				//printf("Connection closed by child PID: %d\n",pid);
-				printf("Connection closed by client or child\n");
+				m_log(LOG_INFO, "Connection closed by client or child\n");
 				/* Connection closed by the client, end of CHILD server */
 				break;
 			} else {
-				fprintf(stderr,"Modbus TCP error: %s\n" ,modbus_strerror(errno));
+				m_log(LOG_ERR, "Modbus TCP error: %s\n" ,modbus_strerror(errno));
 			}
 		}
 	}
