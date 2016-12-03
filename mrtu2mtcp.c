@@ -154,7 +154,10 @@ int main(int argc, char *argv[])
 	printf("Binding to address %s on port %d: SUCCESS\n",opts.ip,opts.port);
 	
 	printf("Serial connection params:\n");
-	printf("RTU slave address =  %d\n", opts.slave_addr );
+	if (opts.slave_addr == MODBUS_TCP_SLAVE)
+		printf("RTU slave address = transparency\n");
+	else
+		printf("RTU slave address =  %d\n", opts.slave_addr );
 	printf("Baudrate = %d\n", opts.baudrate );
 	printf("Number of transport bits = %d\n",opts.bits);
 	printf("Parity = %c\n",opts.parity);
@@ -247,7 +250,7 @@ int parseopts(int argc, char *argv[], config_t *opts)
     default:
 	    fprintf(stderr, "Usage: %s [options]\n",argv[0] );
 	    fprintf(stderr, "Possible options:\n" );
-	    fprintf(stderr, "-s rtu_slave_address (default %d)\n",MODBUS_RTU_SLAVE );
+	    fprintf(stderr, "-s rtu_slave_address (default %d, transparency 255)\n",MODBUS_RTU_SLAVE );
 	    fprintf(stderr, "-S usb_device (default %s)\n",USB_DEV );
 	    fprintf(stderr, "-b baudrate (default %d)\n",BAUDRATE );
 	    fprintf(stderr, "-y parity posible values: N,E,O (default %c)\n",PARITY);
@@ -368,6 +371,7 @@ int process_tcp_request(modbus_t *mb_tcp, modbus_t *mb_rtu,
 	uint8_t *req;
 	req = malloc(MODBUS_TCP_MAX_ADU_LENGTH);
 	pid = getpid();
+	uint8_t rtu_slave = *(int *)mb_rtu; /* Read back configuration mb_rtu->slave */
 
 	if(req == NULL){
  		fprintf(stderr, "process_tcp_request : Failed to allocate memory.\n");
@@ -382,6 +386,13 @@ int process_tcp_request(modbus_t *mb_tcp, modbus_t *mb_rtu,
 #endif
 
 		if (query_size != -1) {
+
+			/* Forward with current slave id */
+			if (rtu_slave == MODBUS_TCP_SLAVE) {
+				uint8_t tcp_slave = req[offset - 1];
+				modbus_set_slave(mb_rtu,tcp_slave);
+				//printf("Current Slave=%d\n", tcp_slave);
+			}
 
 			/*
 				communicate with RTU unit
