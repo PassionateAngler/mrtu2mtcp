@@ -1,7 +1,7 @@
 Simple server for translating Modbus RTU (over serial line) to Modbus TCP and vice versa.
 
 Requirements:
-libmodbus ver. 2.9.3
+libmodbus ver. 2.9.3, tested 3.0.1
 
 Compilation:
 gcc -Wall -I/usr/include/modbus -o mrtu2mtcp mrtu2mtcp.c -lmodbus -lrt
@@ -22,5 +22,7 @@ Possible options:
 -l log_file (NOT IMPLEMENTED)
 -d demonize if present (NOT IMPLEMENTED)
 
+Example:
+mrtu2mtcp -S /dev/ttyR1 -A 0.0.0.0 -p 502 -v
 
 Have fun!
